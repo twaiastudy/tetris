@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 教練俄羅斯方塊</title>
+    <style>
+        body {
+            background-color: #2c3e50;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 { margin: 10px 0; font-size: 24px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+        #game-container {
+            display: flex;
+            gap: 20px;
+            background: #34495e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        canvas {
+            background-color: #1a252f;
+            border: 2px solid #7f8c8d;
+            border-radius: 4px;
+        }
+        #ui-panel { display: flex; flex-direction: column; gap: 15px; width: 200px; }
+        .box { background: #2c3e50; padding: 15px; border-radius: 8px; border: 1px solid #7f8c8d; }
+        #score { font-size: 24px; font-weight: bold; color: #f1c40f; }
+        #coach-message { color: #2ecc71; font-weight: bold; min-height: 60px; line-height: 1.5; }
+        button {
+            padding: 10px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover { background: #c0392b; }
+        .controls { font-size: 12px; color: #bdc3c7; line-height: 1.8; }
+    </style>
+</head>
+<body>
+
+    <h1>🧠 AI 教練俄羅斯方塊</h1>
+    
+    <!-- 音樂元素：請將 src 替換為你的 mp3 檔案路徑 -->
+    <audio id="bgm" loop>
+        <source src="https://actions.google.com/sounds/v1/alarms/spaceship_alarm.ogg" type="audio/mpeg">
+    </audio>
+
+    <div id="game-container">
+        <canvas id="tetris" width="300" height="600"></canvas>
+        <div id="ui-panel">
+            <div class="box">
+                <div>分數</div>
+                <div id="score">0</div>
+            </div>
+            <div class="box">
+                <div>教練建議 💡</div>
+                <div id="coach-message">等待開始...</div>
+            </div>
+            <button id="start-btn">開始遊戲 / 播放音樂</button>
+            <div class="box controls">
+                <strong>操作方式：</strong><br>
+                ⬅️ ➡️ : 左右移動<br>
+                ⬆️ : 旋轉方向<br>
+                ⬇️ : 加速落下<br>
+                空白鍵 : 瞬間落下
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('tetris');
+        const context = canvas.getContext('2d');
+        context.scale(30, 30); // 將 300x600 的畫布縮放為 10x20 的網格
+
+        const bgm = document.getElementById('bgm');
+        const scoreElement = document.getElementById('score');
+        const coachMessage = document.getElementById('coach-message');
+        
+        let dropCounter = 0;
+        let dropInterval = 1000;
+        let lastTime = 0;
+        let score = 0;
+        let gameBoard = createMatrix(10, 20);
+        let animationId = null;
+
+        // 方塊形狀與顏色
+        const pieces = 'ILJOTSZ';
+        const colors = [null, '#e74c3c', '#3498db', '#f1c40f', '#9b59b6', '#2ecc71', '#e67e22', '#1abc9c'];
+
+        function createPiece(type) {
+            switch (type) {
+                case 'I': return [[0,1,0,0], [0,1,0,0], [0,1,0,0], [0,1,0,0]];
+                case 'L': return [[0,2,0], [0,2,0], [0,2,2]];
+                case 'J': return [[0,3,0], [0,3,0], [3,3,0]];
+                case 'O': return [[4,4], [4,4]];
+                case 'T': return [[0,0,0], [5,5,5], [0,5,0]];
+                case 'S': return [[0,6,6], [6,6,0], [0,0,0]];
+                case 'Z': return [[7,7,0], [0,7,7], [0,0,0]];
+            }
+        }
+
+        const player = { pos: {x: 0, y: 0}, matrix: null, score: 0 };
+
+        function createMatrix(w, h) {
+            const matrix = [];
+            while (h--) matrix.push(new Array(w).fill(0));
+            return matrix;
+        }
+
+        function drawMatrix(matrix, offset, alpha = 1) {
+            matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        context.fillStyle = colors[value];
+                        context.globalAlpha = alpha;
+                        context.fillRect(x + offset.x, y + offset.y, 1, 1);
+                        context.globalAlpha = 1;
+                        context.strokeStyle = 'rgba(0,0,0,0.3)';
+                        context.lineWidth = 0.05;
+                        context.strokeRect(x + offset.x, y + offset.y, 1, 1);
+                    }
+                });
+            });
+        }
+
+        function collide(board, obj) {
+            const m = obj.matrix;
+            const o = obj.pos;
+            for (let y = 0; y < m.length; ++y) {
+                for (let x = 0; x < m[y].length; ++x) {
+                    if (m[y][x] !== 0 && (board[y + o.y] && board[y + o.y][x + o.x]) !== 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function merge(board, obj) {
+            obj.matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        board[y + obj.pos.y][x + obj.pos.x] = value;
+                    }
+                });
+            });
+        }
+
+        function rotate(matrix, dir) {
+            for (let y = 0; y < matrix.length; ++y) {
+                for (let x = 0; x < y; ++x) {
+                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+                }
+            }
+            if (dir > 0) matrix.forEach(row => row.reverse());
+            else matrix.reverse();
+        }
+
+        function playerDrop() {
+            player.pos.y++;
+            if (collide(gameBoard, player)) {
+                player.pos.y--;
+                merge(gameBoard, player);
+                playerReset();
+                sweep();
+            }
+            dropCounter = 0;
+        }
+
+        function playerMove(offset) {
+            player.pos.x += offset;
+            if (collide(gameBoard, player)) player.pos.x -= offset;
+            updateCoach();
+        }
+
+        function playerRotate() {
+            const pos = player.pos.x;
+            let offset = 1;
+            rotate(player.matrix, 1);
+            while (collide(gameBoard, player)) {
+                player.pos.x += offset;
+                offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) {
+                    rotate(player.matrix, -1);
+                    player.pos.x = pos;
+                    return;
+                }
+            }
+            updateCoach();
+        }
+
+        function playerReset() {
+            player.matrix = createPiece(pieces[Math.floor(Math.random() * pieces.length)]);
+            player.pos.y = 0;
+            player.pos.x = Math.floor(gameBoard[0].length / 2) - Math.floor(player.matrix[0].length / 2);
+            if (collide(gameBoard, player)) {
+                gameBoard.forEach(row => row.fill(0));
+                score = 0;
+                updateScore();
+            }
+            updateCoach();
+        }
+
+        function sweep() {
+            let rowCount = 1;
+            outer: for (let y = gameBoard.length - 1; y >= 0; --y) {
+                for (let x = 0; x < gameBoard[y].length; ++x) {
+                    if (gameBoard[y][x] === 0) continue outer;
+                }
+                const row = gameBoard.splice(y, 1)[0].fill(0);
+                gameBoard.unshift(row);
+                ++y;
+                score += rowCount * 100;
+                rowCount *= 2;
+            }
+            updateScore();
+        }
+
+        function getGhostPos() {
+            const ghost = { matrix: player.matrix, pos: { x: player.pos.x, y: player.pos.y } };
+            while (!collide(gameBoard, ghost)) { ghost.pos.y++; }
+            ghost.pos.y--;
+            return ghost.pos;
+        }
+
+        // --- 簡易 AI 教練 ---
+        function updateCoach() {
+            // 這裡實作一個極度簡化的判斷邏輯作為展示
+            // 找出最深的落點與對應的旋轉
+            let bestRotations = 0;
+            let bestX = player.pos.x;
+            let maxDepth = -1;
+
+            // 備份原始狀態
+            const origMatrix = JSON.parse(JSON.stringify(player.matrix));
+            
+            for (let r = 0; r < 4; r++) {
+                let tempPlayer = { matrix: JSON.parse(JSON.stringify(player.matrix)), pos: {x: 0, y: 0} };
+                if (r > 0) rotate(tempPlayer.matrix, 1);
+                
+                for (let x = -2; x < gameBoard[0].length + 2; x++) {
+                    tempPlayer.pos.x = x;
+                    tempPlayer.pos.y = 0;
+                    if (!collide(gameBoard, tempPlayer)) {
+                        while (!collide(gameBoard, tempPlayer)) { tempPlayer.pos.y++; }
+                        tempPlayer.pos.y--;
+                        
+                        // 評分標準：落得越深越好 (簡單啟發式)
+                        if (tempPlayer.pos.y > maxDepth) {
+                            maxDepth = tempPlayer.pos.y;
+                            bestX = x;
+                            bestRotations = r;
+                        }
+                    }
+                }
+                player.matrix = tempPlayer.matrix; // keep rotating to test
+            }
+            player.matrix = origMatrix; // 還原
+
+            // 產生提示文字
+            let diffX = bestX - player.pos.x;
+            let moveText = diffX === 0 ? "保持此列" : (diffX > 0 ? `向右移 ${diffX} 格` : `向左移 ${Math.abs(diffX)} 格`);
+            let rotText = bestRotations > 0 ? `，旋轉 ${bestRotations} 次` : "，不需旋轉";
+            coachMessage.innerHTML = `${moveText}<br>${rotText}`;
+        }
+
+        function draw() {
+            context.fillStyle = '#1a252f';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            drawMatrix(gameBoard, {x: 0, y: 0});
+            
+            // 繪製預覽落點 (Ghost Piece)
+            const ghostPos = getGhostPos();
+            drawMatrix(player.matrix, ghostPos, 0.3); // 透明度 0.3
+            
+            // 繪製實體方塊
+            drawMatrix(player.matrix, player.pos);
+        }
+
+        function update(time = 0) {
+            const deltaTime = time - lastTime;
+            lastTime = time;
+            dropCounter += deltaTime;
+            if (dropCounter > dropInterval) playerDrop();
+            draw();
+            animationId = requestAnimationFrame(update);
+        }
+
+        function updateScore() { scoreElement.innerText = score; }
+
+        document.addEventListener('keydown', event => {
+            if (event.keyCode === 37) playerMove(-1);        // 左
+            else if (event.keyCode === 39) playerMove(1);   // 右
+            else if (event.keyCode === 40) playerDrop();    // 下
+            else if (event.keyCode === 38) playerRotate();  // 上(旋轉)
+            else if (event.keyCode === 32) {                // 空白鍵(瞬間落下)
+                player.pos = getGhostPos();
+                playerDrop();
+            }
+        });
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            bgm.play().catch(() => console.log('瀏覽器阻擋自動播放'));
+            if (!animationId) {
+                playerReset();
+                updateScore();
+                update();
+            }
+            document.getElementById('start-btn').innerText = "遊戲進行中...";
+        });
+    </script>
+</body>
+</html>
