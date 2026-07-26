@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 教練俄羅斯方塊</title>
+    <title>AI 教練俄羅斯方塊 - 完整音效版</title>
     <style>
         body {
             background-color: #2c3e50;
@@ -51,8 +51,8 @@
 
     <h1>🧠 AI 教練俄羅斯方塊</h1>
     
-    <!-- 音樂元素：請將 src 替換為你的 mp3 檔案路徑 -->
- <audio id="bgm" loop>
+    <!-- 歡樂背景音樂 -->
+    <audio id="bgm" loop>
         <source src="https://archive.org/download/FluffingADuck/Fluffing%20a%20Duck.mp3" type="audio/mpeg">
     </audio>
 
@@ -79,9 +79,67 @@
     </div>
 
     <script>
+        // ==========================================
+        // 1. 初始化音效引擎 (Web Audio API)
+        // ==========================================
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        function playSound(type) {
+            // 確保瀏覽器允許播放音效
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            if (type === 'drop') {
+                // 觸底：短促低音
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(300, audioCtx.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+                gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.1);
+            } else if (type === 'clear') {
+                // 消去：高亢兩段音
+                oscillator.type = 'square';
+                oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
+                oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime + 0.1);
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.3);
+            } else if (type === 'move') {
+                // 移動：極短的微弱低音
+                oscillator.type = 'triangle';
+                oscillator.frequency.setValueAtTime(400, audioCtx.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.05);
+                gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.05);
+            } else if (type === 'rotate') {
+                // 旋轉：輕快的高音切換
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
+                oscillator.frequency.linearRampToValueAtTime(800, audioCtx.currentTime + 0.05);
+                gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.05);
+            }
+        }
+
+        // ==========================================
+        // 2. 遊戲主邏輯
+        // ==========================================
         const canvas = document.getElementById('tetris');
         const context = canvas.getContext('2d');
-        context.scale(30, 30); // 將 300x600 的畫布縮放為 10x20 的網格
+        context.scale(30, 30); 
 
         const bgm = document.getElementById('bgm');
         const scoreElement = document.getElementById('score');
@@ -94,7 +152,6 @@
         let gameBoard = createMatrix(10, 20);
         let animationId = null;
 
-        // 方塊形狀與顏色
         const pieces = 'ILJOTSZ';
         const colors = [null, '#e74c3c', '#3498db', '#f1c40f', '#9b59b6', '#2ecc71', '#e67e22', '#1abc9c'];
 
@@ -172,6 +229,7 @@
             if (collide(gameBoard, player)) {
                 player.pos.y--;
                 merge(gameBoard, player);
+                playSound('drop'); // 觸發掉落音效
                 playerReset();
                 sweep();
             }
@@ -180,7 +238,11 @@
 
         function playerMove(offset) {
             player.pos.x += offset;
-            if (collide(gameBoard, player)) player.pos.x -= offset;
+            if (collide(gameBoard, player)) {
+                player.pos.x -= offset;
+            } else {
+                playSound('move'); // 只有成功移動時才發出聲音
+            }
             updateCoach();
         }
 
@@ -197,6 +259,7 @@
                     return;
                 }
             }
+            playSound('rotate'); // 只有成功旋轉時才發出聲音
             updateCoach();
         }
 
@@ -214,6 +277,8 @@
 
         function sweep() {
             let rowCount = 1;
+            let cleared = false;
+            
             outer: for (let y = gameBoard.length - 1; y >= 0; --y) {
                 for (let x = 0; x < gameBoard[y].length; ++x) {
                     if (gameBoard[y][x] === 0) continue outer;
@@ -223,7 +288,10 @@
                 ++y;
                 score += rowCount * 100;
                 rowCount *= 2;
+                cleared = true;
             }
+            
+            if (cleared) playSound('clear'); // 觸發消除音效
             updateScore();
         }
 
@@ -236,13 +304,10 @@
 
         // --- 簡易 AI 教練 ---
         function updateCoach() {
-            // 這裡實作一個極度簡化的判斷邏輯作為展示
-            // 找出最深的落點與對應的旋轉
             let bestRotations = 0;
             let bestX = player.pos.x;
             let maxDepth = -1;
 
-            // 備份原始狀態
             const origMatrix = JSON.parse(JSON.stringify(player.matrix));
             
             for (let r = 0; r < 4; r++) {
@@ -256,7 +321,6 @@
                         while (!collide(gameBoard, tempPlayer)) { tempPlayer.pos.y++; }
                         tempPlayer.pos.y--;
                         
-                        // 評分標準：落得越深越好 (簡單啟發式)
                         if (tempPlayer.pos.y > maxDepth) {
                             maxDepth = tempPlayer.pos.y;
                             bestX = x;
@@ -264,11 +328,10 @@
                         }
                     }
                 }
-                player.matrix = tempPlayer.matrix; // keep rotating to test
+                player.matrix = tempPlayer.matrix; 
             }
-            player.matrix = origMatrix; // 還原
+            player.matrix = origMatrix; 
 
-            // 產生提示文字
             let diffX = bestX - player.pos.x;
             let moveText = diffX === 0 ? "保持此列" : (diffX > 0 ? `向右移 ${diffX} 格` : `向左移 ${Math.abs(diffX)} 格`);
             let rotText = bestRotations > 0 ? `，旋轉 ${bestRotations} 次` : "，不需旋轉";
@@ -280,11 +343,9 @@
             context.fillRect(0, 0, canvas.width, canvas.height);
             drawMatrix(gameBoard, {x: 0, y: 0});
             
-            // 繪製預覽落點 (Ghost Piece)
             const ghostPos = getGhostPos();
-            drawMatrix(player.matrix, ghostPos, 0.3); // 透明度 0.3
+            drawMatrix(player.matrix, ghostPos, 0.3); 
             
-            // 繪製實體方塊
             drawMatrix(player.matrix, player.pos);
         }
 
@@ -300,18 +361,28 @@
         function updateScore() { scoreElement.innerText = score; }
 
         document.addEventListener('keydown', event => {
-            if (event.keyCode === 37) playerMove(-1);        // 左
-            else if (event.keyCode === 39) playerMove(1);   // 右
-            else if (event.keyCode === 40) playerDrop();    // 下
-            else if (event.keyCode === 38) playerRotate();  // 上(旋轉)
-            else if (event.keyCode === 32) {                // 空白鍵(瞬間落下)
+            // 防止方向鍵與空白鍵捲動網頁
+            if([32, 37, 38, 39, 40].indexOf(event.keyCode) > -1) {
+                event.preventDefault();
+            }
+            
+            if (event.keyCode === 37) playerMove(-1);        
+            else if (event.keyCode === 39) playerMove(1);   
+            else if (event.keyCode === 40) playerDrop();    
+            else if (event.keyCode === 38) playerRotate();  
+            else if (event.keyCode === 32) {                
                 player.pos = getGhostPos();
                 playerDrop();
             }
         });
 
         document.getElementById('start-btn').addEventListener('click', () => {
+            // 解鎖音效引擎
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
             bgm.play().catch(() => console.log('瀏覽器阻擋自動播放'));
+            
             if (!animationId) {
                 playerReset();
                 updateScore();
