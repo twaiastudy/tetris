@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
+    <!-- 加入 maximum-scale=1.0 和 user-scalable=no 防止手機點擊時意外放大畫面 -->
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 教練俄羅斯方塊 - 完整音效版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI 教練俄羅斯方塊 - 手機觸控版</title>
     <style>
         body {
             background-color: #2c3e50;
@@ -13,26 +14,38 @@
             flex-direction: column;
             align-items: center;
             margin: 0;
-            padding: 20px;
+            padding: 10px;
+            touch-action: manipulation; /* 停用點擊縮放 */
         }
-        h1 { margin: 10px 0; font-size: 24px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+        h1 { margin: 10px 0; font-size: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); text-align: center; }
+        
         #game-container {
             display: flex;
+            flex-direction: row; /* 電腦版左右排列 */
             gap: 20px;
             background: #34495e;
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            max-width: 100%;
         }
+
+        /* 讓 Canvas 在手機上能自動縮小 */
         canvas {
             background-color: #1a252f;
             border: 2px solid #7f8c8d;
             border-radius: 4px;
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            aspect-ratio: 1 / 2;
         }
+
         #ui-panel { display: flex; flex-direction: column; gap: 15px; width: 200px; }
         .box { background: #2c3e50; padding: 15px; border-radius: 8px; border: 1px solid #7f8c8d; }
         #score { font-size: 24px; font-weight: bold; color: #f1c40f; }
-        #coach-message { color: #2ecc71; font-weight: bold; min-height: 60px; line-height: 1.5; }
+        #coach-message { color: #2ecc71; font-weight: bold; min-height: 45px; line-height: 1.5; font-size: 14px;}
+        
         button {
             padding: 10px;
             background: #e74c3c;
@@ -44,14 +57,48 @@
             transition: background 0.2s;
         }
         button:hover { background: #c0392b; }
+        
+        /* 電腦版隱藏虛擬按鍵，保留鍵盤說明 */
         .controls { font-size: 12px; color: #bdc3c7; line-height: 1.8; }
+        #mobile-controls { display: none; }
+
+        /* 手機版樣式 (當螢幕寬度小於 600px 時套用) */
+        @media (max-width: 600px) {
+            #game-container {
+                flex-direction: column; /* 改為上下排列 */
+                align-items: center;
+                padding: 10px;
+                gap: 10px;
+            }
+            #ui-panel { width: 100%; max-width: 300px; gap: 10px; }
+            .controls { display: none; } /* 手機版隱藏文字說明 */
+            
+            /* 顯示虛擬按鍵 */
+            #mobile-controls {
+                display: flex;
+                justify-content: space-between;
+                width: 100%;
+                max-width: 300px;
+                margin-top: 10px;
+                gap: 5px;
+            }
+            .ctrl-btn {
+                flex: 1;
+                background: #3498db;
+                font-size: 20px;
+                padding: 15px 0;
+                border-radius: 8px;
+            }
+            .ctrl-btn:active { background: #2980b9; }
+            .btn-danger { background: #e67e22; }
+            .btn-danger:active { background: #d35400; }
+        }
     </style>
 </head>
 <body>
 
     <h1>🧠 AI 教練俄羅斯方塊</h1>
     
-    <!-- 歡樂背景音樂 -->
     <audio id="bgm" loop>
         <source src="https://archive.org/download/FluffingADuck/Fluffing%20a%20Duck.mp3" type="audio/mpeg">
     </audio>
@@ -67,70 +114,70 @@
                 <div>教練建議 💡</div>
                 <div id="coach-message">等待開始...</div>
             </div>
-            <button id="start-btn">開始遊戲 / 播放音樂</button>
+            <button id="start-btn">開始遊戲</button>
+            
             <div class="box controls">
-                <strong>操作方式：</strong><br>
+                <strong>鍵盤操作：</strong><br>
                 ⬅️ ➡️ : 左右移動<br>
                 ⬆️ : 旋轉方向<br>
                 ⬇️ : 加速落下<br>
                 空白鍵 : 瞬間落下
+            </div>
+            
+            <!-- 手機虛擬按鍵 -->
+            <div id="mobile-controls">
+                <button class="ctrl-btn" id="btn-left">⬅️</button>
+                <button class="ctrl-btn" id="btn-down">⬇️</button>
+                <button class="ctrl-btn" id="btn-right">➡️</button>
+                <button class="ctrl-btn" id="btn-rotate">↻</button>
+                <button class="ctrl-btn btn-danger" id="btn-drop">⏬</button>
             </div>
         </div>
     </div>
 
     <script>
         // ==========================================
-        // 1. 初始化音效引擎 (Web Audio API)
+        // 1. 初始化音效引擎
         // ==========================================
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         const audioCtx = new AudioContext();
 
         function playSound(type) {
-            // 確保瀏覽器允許播放音效
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            if (audioCtx.state === 'suspended') return; // 手機尚未解鎖音效前不播放
             
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
-            
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
             
             if (type === 'drop') {
-                // 觸底：短促低音
                 oscillator.type = 'sine';
                 oscillator.frequency.setValueAtTime(300, audioCtx.currentTime);
                 oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
                 gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-                oscillator.start();
-                oscillator.stop(audioCtx.currentTime + 0.1);
+                oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.1);
             } else if (type === 'clear') {
-                // 消去：高亢兩段音
                 oscillator.type = 'square';
                 oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
                 oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime + 0.1);
                 gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-                oscillator.start();
-                oscillator.stop(audioCtx.currentTime + 0.3);
+                oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.3);
             } else if (type === 'move') {
-                // 移動：極短的微弱低音
                 oscillator.type = 'triangle';
                 oscillator.frequency.setValueAtTime(400, audioCtx.currentTime);
                 oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.05);
                 gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
-                oscillator.start();
-                oscillator.stop(audioCtx.currentTime + 0.05);
+                oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.05);
             } else if (type === 'rotate') {
-                // 旋轉：輕快的高音切換
                 oscillator.type = 'sine';
                 oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
                 oscillator.frequency.linearRampToValueAtTime(800, audioCtx.currentTime + 0.05);
                 gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
-                oscillator.start();
-                oscillator.stop(audioCtx.currentTime + 0.05);
+                oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.05);
             }
         }
 
@@ -229,7 +276,7 @@
             if (collide(gameBoard, player)) {
                 player.pos.y--;
                 merge(gameBoard, player);
-                playSound('drop'); // 觸發掉落音效
+                playSound('drop');
                 playerReset();
                 sweep();
             }
@@ -241,7 +288,7 @@
             if (collide(gameBoard, player)) {
                 player.pos.x -= offset;
             } else {
-                playSound('move'); // 只有成功移動時才發出聲音
+                playSound('move');
             }
             updateCoach();
         }
@@ -259,8 +306,13 @@
                     return;
                 }
             }
-            playSound('rotate'); // 只有成功旋轉時才發出聲音
+            playSound('rotate');
             updateCoach();
+        }
+
+        function playerHardDrop() {
+            player.pos = getGhostPos();
+            playerDrop();
         }
 
         function playerReset() {
@@ -278,7 +330,6 @@
         function sweep() {
             let rowCount = 1;
             let cleared = false;
-            
             outer: for (let y = gameBoard.length - 1; y >= 0; --y) {
                 for (let x = 0; x < gameBoard[y].length; ++x) {
                     if (gameBoard[y][x] === 0) continue outer;
@@ -290,8 +341,7 @@
                 rowCount *= 2;
                 cleared = true;
             }
-            
-            if (cleared) playSound('clear'); // 觸發消除音效
+            if (cleared) playSound('clear');
             updateScore();
         }
 
@@ -302,12 +352,10 @@
             return ghost.pos;
         }
 
-        // --- 簡易 AI 教練 ---
         function updateCoach() {
             let bestRotations = 0;
             let bestX = player.pos.x;
             let maxDepth = -1;
-
             const origMatrix = JSON.parse(JSON.stringify(player.matrix));
             
             for (let r = 0; r < 4; r++) {
@@ -345,7 +393,6 @@
             
             const ghostPos = getGhostPos();
             drawMatrix(player.matrix, ghostPos, 0.3); 
-            
             drawMatrix(player.matrix, player.pos);
         }
 
@@ -360,24 +407,39 @@
 
         function updateScore() { scoreElement.innerText = score; }
 
+        // ==========================================
+        // 3. 事件監聽 (鍵盤與手機觸控)
+        // ==========================================
+
+        // 電腦鍵盤事件
         document.addEventListener('keydown', event => {
-            // 防止方向鍵與空白鍵捲動網頁
             if([32, 37, 38, 39, 40].indexOf(event.keyCode) > -1) {
                 event.preventDefault();
             }
-            
             if (event.keyCode === 37) playerMove(-1);        
             else if (event.keyCode === 39) playerMove(1);   
             else if (event.keyCode === 40) playerDrop();    
             else if (event.keyCode === 38) playerRotate();  
-            else if (event.keyCode === 32) {                
-                player.pos = getGhostPos();
-                playerDrop();
-            }
+            else if (event.keyCode === 32) playerHardDrop();
         });
 
+        // 綁定虛擬按鍵事件 (使用 pointerdown 支援滑鼠與觸控)
+        function bindTouch(id, action) {
+            const btn = document.getElementById(id);
+            btn.addEventListener('pointerdown', (e) => {
+                e.preventDefault(); // 防止觸發預設點擊與雙擊縮放
+                action();
+            });
+        }
+        
+        bindTouch('btn-left', () => playerMove(-1));
+        bindTouch('btn-right', () => playerMove(1));
+        bindTouch('btn-down', () => playerDrop());
+        bindTouch('btn-rotate', () => playerRotate());
+        bindTouch('btn-drop', () => playerHardDrop());
+
+        // 開始按鈕
         document.getElementById('start-btn').addEventListener('click', () => {
-            // 解鎖音效引擎
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume();
             }
