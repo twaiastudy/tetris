@@ -1,0 +1,206 @@
+```html
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prompt Copy Tool</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 40px 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                   "Noto Sans TC", Arial, sans-serif;
+      background: #f5f7fb;
+      color: #222;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 25px;
+      color: #1f4e79;
+    }
+
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 520px;
+      padding: 18px;
+      border: 1px solid #d5dbe3;
+      border-radius: 10px;
+      font-size: 16px;
+      line-height: 1.7;
+      resize: vertical;
+      font-family: inherit;
+      color: #333;
+      background: #fafafa;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #4a90e2;
+      background: white;
+    }
+
+    .button-area {
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 14px 35px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      background: #1f6feb;
+      color: white;
+      transition: 0.2s;
+    }
+
+    button:hover {
+      background: #1558b0;
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    #status {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 16px;
+      font-weight: bold;
+      min-height: 24px;
+    }
+
+    .hint {
+      text-align: center;
+      color: #777;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding: 20px 12px;
+      }
+
+      .card {
+        padding: 18px;
+      }
+
+      textarea {
+        min-height: 600px;
+        font-size: 15px;
+      }
+
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+
+    <h1>📋 Codex AGENTS.md Prompt</h1>
+
+    <div class="card">
+
+      <textarea id="prompt" readonly>請根據我在 ChatGPT 中的過去對話、已儲存記憶及目前可取得的個人使用脈絡，幫我建立一份 Codex「個人全域 AGENTS.md」，預計儲存於 `~/.codex/AGENTS.md`。
+
+請先整理你對我的職業、常見任務、語言偏好、工作方式、檔案處理習慣、品質標準、測試要求、安全限制及成果交付方式的理解，並區分：
+* 明確得知
+* 合理歸納
+* 尚未確認
+
+不得捏造或把不確定資訊寫成正式規則。
+正式 AGENTS.md 只保留所有專案都適用的長期規則。特定品牌、單一課程格式、圖片尺寸及完整工作流程，請另外建議放入專案層、子資料夾層或 Skills。
+
+撰寫要求：
+* 使用台灣繁體中文
+* 規則清楚、具體、可執行
+* 避免重複、模糊及衝突
+* 以精簡實用為原則，約 40～80 行
+* 可直接儲存為 `~/.codex/AGENTS.md`
+
+請依序輸出：
+1. 我的使用輪廓
+2. 四層架構的分配建議
+3. 可直接複製的完整 AGENTS.md</textarea>
+
+      <div class="button-area">
+        <button id="copyBtn" onclick="copyPrompt()">
+          📋 Copy Prompt
+        </button>
+      </div>
+
+      <div id="status"></div>
+
+      <div class="hint">
+        點擊按鈕即可複製完整 Prompt
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    async function copyPrompt() {
+      const textarea = document.getElementById("prompt");
+      const button = document.getElementById("copyBtn");
+      const status = document.getElementById("status");
+
+      try {
+        await navigator.clipboard.writeText(textarea.value);
+
+        button.textContent = "✅ 已複製 Prompt";
+        status.textContent = "Prompt 已成功複製到剪貼簿";
+
+        setTimeout(() => {
+          button.textContent = "📋 Copy Prompt";
+          status.textContent = "";
+        }, 2000);
+
+      } catch (error) {
+        // 相容部分瀏覽器或非 HTTPS 環境
+        textarea.removeAttribute("readonly");
+        textarea.select();
+        document.execCommand("copy");
+        textarea.setAttribute("readonly", true);
+
+        button.textContent = "✅ 已複製 Prompt";
+        status.textContent = "Prompt 已成功複製到剪貼簿";
+
+        setTimeout(() => {
+          button.textContent = "📋 Copy Prompt";
+          status.textContent = "";
+        }, 2000);
+      }
+    }
+  </script>
+
+</body>
+</html>
+```
